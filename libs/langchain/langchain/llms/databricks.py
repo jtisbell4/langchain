@@ -3,7 +3,14 @@ from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, List, Optional
 
 import requests
-from pydantic import BaseModel, Extra, Field, PrivateAttr, root_validator, validator
+from pydantic import (
+    BaseModel,
+    Extra,
+    Field,
+    PrivateAttr,
+    root_validator,
+    validator,
+)
 
 from langchain.callbacks.manager import CallbackManagerForLLMRun
 from langchain.llms.base import LLM
@@ -47,12 +54,13 @@ class _DatabricksServingEndpointClient(_DatabricksClientBase):
 
     def post(self, request: Any) -> Any:
         # See https://docs.databricks.com/machine-learning/model-serving/score-model-serving-endpoints.html
-        wrapped_request = {"dataframe_records": [request]}
-        response = self.post_raw(wrapped_request)["predictions"]
+        # wrapped_request = {"dataframe_records": [request]}
+        wrapped_request = request
+        response = self.post_raw(wrapped_request)["predictions"]["candidates"]
         # For a single-record query, the result is not a list.
         if isinstance(response, list):
             response = response[0]
-        return response
+        return response["text"]
 
 
 class _DatabricksClusterDriverProxyClient(_DatabricksClientBase):
@@ -130,7 +138,7 @@ def get_default_api_token() -> str:
 
 
 class Databricks(LLM):
-    """Databricks serving endpoint or a cluster driver proxy app for LLM.
+    """Databricks serving endpoint or a cluster driver proxy app for LLM :).
 
     It supports two endpoint types:
 
@@ -310,7 +318,8 @@ class Databricks(LLM):
 
         # TODO: support callbacks
 
-        request = {"prompt": prompt, "stop": stop}
+        request = {"inputs": {"prompt": [prompt], "stop": [stop] or stop}}
+
         request.update(kwargs)
         if self.model_kwargs:
             request.update(self.model_kwargs)
