@@ -64,10 +64,11 @@ class _DatabricksServingEndpointClient(_DatabricksClientBase):
 
 class _DatabricksOptimizedServingEndpointClient(_DatabricksServingEndpointClient):
     """An API client that talks to an LLM-optimized Databricks serving
-    endpoint"""
+    endpoint, which has a specific input/output schema managed by Databricks"""
 
     def post(self, request: Any) -> Any:
         # See https://docs.databricks.com/machine-learning/model-serving/score-model-serving-endpoints.html
+        request["prompt"], request["stop"] = [request["prompt"]], [request["stop"]]
         wrapped_request = {"inputs": request}
         response = self.post_raw(wrapped_request)["predictions"]["candidates"]
         # For a single-record query, the result is not a list.
@@ -344,7 +345,7 @@ class Databricks(LLM):
 
         # TODO: support callbacks
 
-        request = {"prompt": [prompt], "stop": [stop]}
+        request = {"prompt": prompt, "stop": stop}
 
         request.update(kwargs)
         if self.model_kwargs:
