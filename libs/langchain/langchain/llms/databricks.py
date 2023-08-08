@@ -29,9 +29,7 @@ class _DatabricksClientBase(BaseModel, ABC):
         response = requests.post(self.api_url, headers=headers, json=request)
         # TODO: error handling and automatic retries
         if not response.ok:
-            raise ValueError(
-                f"HTTP {response.status_code} error: {response.text}"
-            )
+            raise ValueError(f"HTTP {response.status_code} error: {response.text}")
         return response.json()
 
     @abstractmethod
@@ -50,9 +48,7 @@ class _DatabricksServingEndpointClient(_DatabricksClientBase):
         if "api_url" not in values:
             host = values["host"]
             endpoint_name = values["endpoint_name"]
-            api_url = (
-                f"https://{host}/serving-endpoints/{endpoint_name}/invocations"
-            )
+            api_url = f"https://{host}/serving-endpoints/{endpoint_name}/invocations"
             values["api_url"] = api_url
         return values
 
@@ -66,9 +62,7 @@ class _DatabricksServingEndpointClient(_DatabricksClientBase):
         return response
 
 
-class _DatabricksOptimizedServingEndpointClient(
-    _DatabricksServingEndpointClient
-):
+class _DatabricksOptimizedServingEndpointClient(_DatabricksServingEndpointClient):
     """An API client that talks to an LLM-optimized Databricks serving
     endpoint"""
 
@@ -286,13 +280,9 @@ class Databricks(LLM):
                 )
 
     @validator("cluster_driver_port", always=True)
-    def set_cluster_driver_port(
-        cls, v: Any, values: Dict[str, Any]
-    ) -> Optional[str]:
+    def set_cluster_driver_port(cls, v: Any, values: Dict[str, Any]) -> Optional[str]:
         if v and values["endpoint_name"]:
-            raise ValueError(
-                "Cannot set both endpoint_name and cluster_driver_port."
-            )
+            raise ValueError("Cannot set both endpoint_name and cluster_driver_port.")
         elif values["endpoint_name"]:
             return None
         elif v is None:
@@ -305,13 +295,9 @@ class Databricks(LLM):
             return v
 
     @validator("model_kwargs", always=True)
-    def set_model_kwargs(
-        cls, v: Optional[Dict[str, Any]]
-    ) -> Optional[Dict[str, Any]]:
+    def set_model_kwargs(cls, v: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         if v:
-            assert (
-                "prompt" not in v
-            ), "model_kwargs must not contain key 'prompt'"
+            assert "prompt" not in v, "model_kwargs must not contain key 'prompt'"
             assert "stop" not in v, "model_kwargs must not contain key 'stop'"
         return v
 
