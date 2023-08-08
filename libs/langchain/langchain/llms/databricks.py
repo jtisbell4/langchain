@@ -151,7 +151,7 @@ def get_default_api_token() -> str:
 
 
 class Databricks(LLM):
-    """Databricks serving endpoint or a cluster driver proxy app for LLM :).
+    """Databricks serving endpoint or a cluster driver proxy app for LLM.
 
     It supports two endpoint types:
 
