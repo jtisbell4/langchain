@@ -29,7 +29,9 @@ class _DatabricksClientBase(BaseModel, ABC):
         response = requests.post(self.api_url, headers=headers, json=request)
         # TODO: error handling and automatic retries
         if not response.ok:
-            raise ValueError(f"HTTP {response.status_code} error: {response.text}")
+            raise ValueError(
+                f"HTTP {response.status_code} error: {response.text}"
+            )
         return response.json()
 
     @abstractmethod
@@ -48,14 +50,31 @@ class _DatabricksServingEndpointClient(_DatabricksClientBase):
         if "api_url" not in values:
             host = values["host"]
             endpoint_name = values["endpoint_name"]
-            api_url = f"https://{host}/serving-endpoints/{endpoint_name}/invocations"
+            api_url = (
+                f"https://{host}/serving-endpoints/{endpoint_name}/invocations"
+            )
             values["api_url"] = api_url
         return values
 
     def post(self, request: Any) -> Any:
         # See https://docs.databricks.com/machine-learning/model-serving/score-model-serving-endpoints.html
-        # wrapped_request = {"dataframe_records": [request]}
-        wrapped_request = request
+        wrapped_request = {"dataframe_records": [request]}
+        response = self.post_raw(wrapped_request)["predictions"]
+        # For a single-record query, the result is not a list.
+        if isinstance(response, list):
+            response = response[0]
+        return response
+
+
+class _DatabricksOptimizedServingEndpointClient(
+    _DatabricksServingEndpointClient
+):
+    """An API client that talks to an LLM-optimized Databricks serving
+    endpoint"""
+
+    def post(self, request: Any) -> Any:
+        # See https://docs.databricks.com/machine-learning/model-serving/score-model-serving-endpoints.html
+        wrapped_request = {"inputs": request}
         response = self.post_raw(wrapped_request)["predictions"]["candidates"]
         # For a single-record query, the result is not a list.
         if isinstance(response, list):
@@ -207,6 +226,12 @@ class Databricks(LLM):
     You must not set both ``endpoint_name`` and ``cluster_id``.
     """
 
+    endpoint_is_optimized: Optional[bool] = False
+    """Flag for indicating whether or not the model serving endpoint is an "LLM-
+    optimized" endpoint. This is obviously only applicable when
+    ``endpoint_name`` is not `None`.
+    """
+
     cluster_id: Optional[str] = None
     """ID of the cluster if connecting to a cluster driver proxy app.
     If neither ``endpoint_name`` nor ``cluster_id`` is not provided and the code runs
@@ -261,9 +286,13 @@ class Databricks(LLM):
                 )
 
     @validator("cluster_driver_port", always=True)
-    def set_cluster_driver_port(cls, v: Any, values: Dict[str, Any]) -> Optional[str]:
+    def set_cluster_driver_port(
+        cls, v: Any, values: Dict[str, Any]
+    ) -> Optional[str]:
         if v and values["endpoint_name"]:
-            raise ValueError("Cannot set both endpoint_name and cluster_driver_port.")
+            raise ValueError(
+                "Cannot set both endpoint_name and cluster_driver_port."
+            )
         elif values["endpoint_name"]:
             return None
         elif v is None:
@@ -276,20 +305,31 @@ class Databricks(LLM):
             return v
 
     @validator("model_kwargs", always=True)
-    def set_model_kwargs(cls, v: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    def set_model_kwargs(
+        cls, v: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
         if v:
-            assert "prompt" not in v, "model_kwargs must not contain key 'prompt'"
+            assert (
+                "prompt" not in v
+            ), "model_kwargs must not contain key 'prompt'"
             assert "stop" not in v, "model_kwargs must not contain key 'stop'"
         return v
 
     def __init__(self, **data: Any):
         super().__init__(**data)
         if self.endpoint_name:
-            self._client = _DatabricksServingEndpointClient(
-                host=self.host,
-                api_token=self.api_token,
-                endpoint_name=self.endpoint_name,
-            )
+            if self.endpoint_is_optimized is True:
+                self._client = _DatabricksOptimizedServingEndpointClient(
+                    host=self.host,
+                    api_token=self.api_token,
+                    endpoint_name=self.endpoint_name,
+                )
+            else:
+                self._client = _DatabricksServingEndpointClient(
+                    host=self.host,
+                    api_token=self.api_token,
+                    endpoint_name=self.endpoint_name,
+                )
         elif self.cluster_id and self.cluster_driver_port:
             self._client = _DatabricksClusterDriverProxyClient(
                 host=self.host,
@@ -318,7 +358,7 @@ class Databricks(LLM):
 
         # TODO: support callbacks
 
-        request = {"inputs": {"prompt": [prompt], "stop": [stop] or stop}}
+        request = {"prompt": [prompt], "stop": [stop]}
 
         request.update(kwargs)
         if self.model_kwargs:
